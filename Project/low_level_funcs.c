@@ -3,6 +3,7 @@
 void *get_start_address(uint32_t pid) {
     char pid_folder[10], line[200], location[50] = "/proc/";
     size_t start_address;
+    bool found;
 
     sprintf(pid_folder, "%d", pid);
     strcat(location, pid_folder);
@@ -10,13 +11,19 @@ void *get_start_address(uint32_t pid) {
 
     FILE *fp;
     if ((fp = fopen(location, "r")) == NULL) {
+        /* Program doesn't have access rights */
         fprintf(stderr, "Error: Access to heap denied\n");
         return (void*)ERROR_ACCESS_PID;
     }
-    while (!strstr(line, "[heap]")) {
+    while (!(found = strstr(line, "[heap]")) && !feof(fp)) {
         fscanf(fp, "%[^\n]%*c", line);
     }
     fclose(fp);
+
+    if (!found) {
+        fprintf(stderr, "Error: Start address couldn't be found\n");
+        return (void*)ERROR_ADDRESS_NOT_FOUND;
+    }
 
     char *start_addr_str = strtok(line, "-");
     start_address = strtoull(start_addr_str, NULL, 16);
@@ -25,12 +32,15 @@ void *get_start_address(uint32_t pid) {
 }
 
 void *get_end_address(void) {
-    return (void*)(sbrk(0));
+    return sbrk(0);
 }
 
 uint32_t expand_heap(size_t *new_start_ptr, uint32_t size) {
     *new_start_ptr = (size_t)get_end_address();
     int8_t allocated;
+    /* If size is greater than 128 KB, use mmap to allocate another(non
+     * contigulus) block of memory which will be linked to original heap TODO 
+     * */
     if (size < MMAP_THRESHOLD) {
         allocated = brk(new_start_ptr + size);
         if (allocated == -1) {
@@ -59,7 +69,7 @@ uint32_t expand_heap(size_t *new_start_ptr, uint32_t size) {
     }
 }
 
-void print(size_t start, size_t end) {
+void print(void* start, void* end) {
     char *ptr = (char*)start, *end_ptr = (char*)end;
     while (ptr < end_ptr) {
         printf("%d", *ptr);
