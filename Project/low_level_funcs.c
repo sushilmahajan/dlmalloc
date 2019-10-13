@@ -1,6 +1,6 @@
 #include "low_level_funcs.h"
 
-size_t get_start_address(uint32_t pid) {
+void *get_start_address(uint32_t pid) {
     char pid_folder[10], line[200], location[50] = "/proc/";
     size_t start_address;
 
@@ -11,7 +11,7 @@ size_t get_start_address(uint32_t pid) {
     FILE *fp;
     if ((fp = fopen(location, "r")) == NULL) {
         fprintf(stderr, "Error: Access to heap denied\n");
-        return ERROR_ACCESS_PID;
+        return (void*)ERROR_ACCESS_PID;
     }
     while (!strstr(line, "[heap]")) {
         fscanf(fp, "%[^\n]%*c", line);
@@ -21,28 +21,47 @@ size_t get_start_address(uint32_t pid) {
     char *start_addr_str = strtok(line, "-");
     start_address = strtoull(start_addr_str, NULL, 16);
 
-    return start_address;
+    return (void*)start_address;
 }
 
-size_t get_end_address(void) {
-    return (size_t)(sbrk(0));
+void *get_end_address(void) {
+    return (void*)(sbrk(0));
 }
 
-size_t expand_heap(uint32_t size) {
-    size_t end_address = get_end_address();
-    int8_t allocated = -1;
-
-    while ((allocated == -1) && size) {
-        allocated = brk((void*)end_address + size); 
-        size /= 2;
+uint32_t expand_heap(size_t *new_start_ptr, uint32_t size) {
+    *new_start_ptr = (size_t)get_end_address();
+    int8_t allocated;
+    if (size < MMAP_THRESHOLD) {
+        allocated = brk(new_start_ptr + size);
+        if (allocated == -1) {
+            perror("Error");
+            return errno;
+        }
+        return size;
     }
-    return get_end_address();
+    else {
+        size_t pagesize = getpagesize();
+        uint32_t num_of_pages = size / pagesize + 1;
+        
+        *new_start_ptr = (size_t)mmap(new_start_ptr + MMAP_THRESHOLD,
+                num_of_pages * pagesize,
+                PROT_READ | PROT_WRITE | PROT_EXEC,
+                MAP_ANON | MAP_PRIVATE,
+                0,
+                0
+                );
+
+        if (*new_start_ptr == -1) {
+            perror("Error");
+            return errno;
+        }
+        return size;
+    }
 }
 
-void print_heap(size_t start, size_t end) {
+void print(size_t start, size_t end) {
     char *ptr = (char*)start, *end_ptr = (char*)end;
     while (ptr < end_ptr) {
         printf("%d", *ptr);
     }
 }
-

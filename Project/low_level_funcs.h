@@ -4,13 +4,16 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include "error.h"
 
-size_t get_start_address(uint32_t pid);
+#define MMAP_THRESHOLD      (128 * 1024)
 
-size_t get_end_address(void);
+void *get_start_address(uint32_t pid);
 
-size_t expand_heap(uint32_t size);
+void *get_end_address(void);
 
-void print_heap(size_t start, size_t end);
+uint32_t expand_heap(size_t *new_start_ptr, uint32_t size);
+
+void print(size_t start, size_t end);
 
