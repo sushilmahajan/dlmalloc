@@ -13,7 +13,7 @@ int main(void)
         return 1;
     }
     addr2 = get_end_address();
-    size = expand_heap(&ptr, MMAP_THRESHOLD + 1024);
-    printf("%p %lx %d\n", addr2, ptr, size/1024);
+//    size = expand_heap(&ptr, MMAP_THRESHOLD + 1024);
+    printf("%p %lx\n", addr2, ptr);
     return 0; 
 } 

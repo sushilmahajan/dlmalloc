@@ -5,7 +5,24 @@
 #ifndef HEAP_MAN_H_INCLUDED 
 #define HEAP_MAN_H_INCLUDED 1
 
+#include "bins.h"
 #include "low_level_funcs.h"
+
+typedef struct malloc_state {                                                          
+    binmap_t   smallmap;                                                         
+    binmap_t   treemap;                                                          
+    chunkptr   dv;                                                               
+    size_t     dvsize;                                                           
+    chunkptr   top;                                                              
+    size_t     topsize;                                                          
+    char*      least_addr;                                                       
+    chunkptr   smallbins[(NSMALLBINS+1)*2];                                      
+    tchunkptr  treebins[NTREEBINS];                                              
+} mstate;                                                                             
+
+/* The global malloc_state used for malloc, calloc, realloc, free calls */                  
+extern struct malloc_state _g_m_;                                               
+#define g_m                 (&_g_m_)                                             
 
 /** \brief Allocates a block of given size in heap by finding suitable sized
  *         free block from heap 

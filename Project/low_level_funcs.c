@@ -35,7 +35,7 @@ void *get_end_address(void) {
     return sbrk(0);
 }
 
-uint32_t expand_heap(size_t *new_start_ptr, uint32_t size) {
+uint32_t get_mem_form_sys(size_t *new_start_ptr, uint32_t size) {
     *new_start_ptr = (size_t)get_end_address();
     int8_t allocated;
     /* If size is greater than 128 KB, use mmap to allocate another(non
@@ -49,6 +49,8 @@ uint32_t expand_heap(size_t *new_start_ptr, uint32_t size) {
         }
         return size;
     }
+
+#if MMAP_ENABLED
     else {
         size_t pagesize = getpagesize();
         uint32_t num_of_pages = size / pagesize + 1;
@@ -67,7 +69,10 @@ uint32_t expand_heap(size_t *new_start_ptr, uint32_t size) {
         }
         return size;
     }
+#endif /* MMAP_ENABLED */
 }
+
+uint32_t return_mem_to_sys(void *ptr);
 
 void print(void* start, void* end) {
     char *ptr = (char*)start, *end_ptr = (char*)end;
