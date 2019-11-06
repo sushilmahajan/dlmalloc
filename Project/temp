@@ -1,0 +1,36 @@
+
+///* Unlink the first chunk from a smallbin */                                   
+//void unlink_first_small_chunk(mstate *M, chunkptr B, chunkptr P, index_t I) { 
+//    chunkptr F = P->next;  
+//    assert(P != B); 
+//    assert(P != F);  
+//    assert(chunksize(P) == small_index_to_size(I));                               
+//    if (B == F) {            
+//        clear_smallmap(M, I);
+//    }                        
+//    else if (ok_address(M, F) && F->prev == P) {
+//        F->prev = B;
+//        B->next = F;               
+//    }                 
+//    //  else {
+//    //    CORRUPTION_ERROR_ACTION(M);
+//    //  }
+//}                                                                              
+
+//    if (F == smallbin_at(M,I) || (ok_address(M, F) && F->prev == P)) {   
+//        if (B == F) {   
+//            clear_smallmap(M, I);
+//        }                        
+//        else if (B == smallbin_at(M,I) || (ok_address(M, B) && B->next == P)) {                     
+//            F->prev = B;
+//            B->next = F;
+//        }               
+//        //    else {     
+//        //      CORRUPTION_ERROR_ACTION(M);
+//        //    }
+//    }          
+//    //  else {
+//    //      CORRUPTION_ERROR_ACTION(M);
+//    //  }                              
+//}                                       
+
