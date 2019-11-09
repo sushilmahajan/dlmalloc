@@ -195,7 +195,9 @@ uint8_t search_large_chunk(mstate *state, tchunkptr *ptr,  size_t size) {
                 *ptr = NULL;
             }
 #if DEBUG_BINS 
-            printf("Not Found, best found choice is %ld\n", CHUNKSIZE(*ptr));
+            else {
+                printf("Not Found, best found choice is %ld\n", CHUNKSIZE(*ptr));
+            }
 #endif
             return 0;
         }

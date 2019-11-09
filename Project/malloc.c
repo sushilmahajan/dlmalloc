@@ -3,6 +3,8 @@
 #define TOP_SIZE                (32)
 #define BEGIN_SIZE              (32)
 #define SYSTEM_ALLOCATION_SIZE  (100 * 1024)
+#define TRACK_MALLOC            (1)
+#define TRACK_FREE              (1)
 
 mstate _g_mstate_;
 
@@ -216,6 +218,9 @@ void *my_malloc(size_t bytes)
 
     if (size <= MAX_SMALL_REQUEST) {    // if small size, check in smallbin of same size 
         if (IS_SMALLBIN_NON_EMPTY(g_mstate, small_index(size))) {
+#if TRACK_MALLOC
+            printf("Small chunk of required size exists in smallbin of index %ld\n", small_index(size));
+#endif
             ptr = remove_small_chunk(g_mstate, size);                               
             FINISH_ALLOCATION(ptr, size);
         }                                                                        
@@ -224,6 +229,9 @@ void *my_malloc(size_t bytes)
         compute_tree_index(size, i);
 
         if (IS_TREEBIN_NON_EMPTY(g_mstate, i)) { 
+#if TRACK_MALLOC
+            printf("Large chunk or required size exists in treebin of index %ld\n", i);
+#endif
             x = search_large_chunk(g_mstate, tptr, size);   // store best found choice
             if (x) {                
                 ptr = (chunkptr)remove_large_chunk_by_address(g_mstate, *tptr);
@@ -234,6 +242,9 @@ void *my_malloc(size_t bytes)
     }
     while (!allocated) {
         if (size <= g_mstate->rsize) {  // if rchunk is large enough split it
+#if TRACK_MALLOC
+            printf("Splitting rchunk to allocate new block\n");
+#endif
             ptr = split_rchunk(g_mstate, size);
             FINISH_ALLOCATION(ptr, size);
             break;
@@ -241,26 +252,41 @@ void *my_malloc(size_t bytes)
         else {
             if (size <= MAX_SMALL_REQUEST) { // if small request doesn't fit in rchunk, check for larger smallbins & treebins
                 if ((ptr = allocate_from_larger_smallbins(g_mstate, size))) {
+#if TRACK_MALLOC
+                    printf("Allocated space from larger smallbin chunk\n");
+#endif
                     FINISH_ALLOCATION(ptr, size);
                     break;
                 }
                 else if ((ptr = allocate_from_larger_treebins(g_mstate, size))) {
+#if TRACK_MALLOC
+                    printf("Allocated space from treebin chunk\n");
+#endif
                     FINISH_ALLOCATION(ptr, size);
                     break;
                 }
             }
             else {
                 if (*tptr != NULL) {
+#if TRACK_MALLOC
+                    printf("Allocated best found treebin chunk\n");
+#endif
                     FINISH_ALLOCATION(*tptr, size);
                     break;
                 }
                 else if ((ptr = allocate_from_larger_treebins(g_mstate, size))) {
+#if TRACK_MALLOC
+                    printf("Allocated space from larger treebin chunk\n");
+#endif
                     FINISH_ALLOCATION(ptr, size);
                     break;
                 }
             }
             if (!allocated) {
                 if (sys_alloc(g_mstate)) {
+#if TRACK_MALLOC
+                    printf("System allocation performed\n");
+#endif
                     allocated = 0;
                     break;
                 }
@@ -275,18 +301,66 @@ void *my_malloc(size_t bytes)
     }
 }
 
-void *my_calloc(size_t num, size_t size);
+void *my_calloc(size_t num, size_t size) {
+    void *ptr;
 
-void *my_realloc(void *ptr, size_t new_size);
+    ptr = my_malloc(num * size);
+    if (ptr == NULL) {
+        return ptr;
+    }
+
+    bzero(ptr, num * size);
+    return ptr;
+}
+
+void *my_realloc(void *ptr, size_t new_size) {
+
+    assert(ok_address(g_mstate, ptr));  
+
+    chunkptr fchunk = MEM_TO_CHUNK(ptr);
+    check_malloced_chunk(ptr, CHUNKSIZE(fchunk));
+
+    size_t prev_size;
+    prev_size = CHUNKSIZE(fchunk);
+    new_size = PAD_REQUEST(new_size);
+
+    if (prev_size >= new_size) {
+        if ((prev_size - new_size) >= MIN_CHUNK_SIZE) {
+            chunkptr new_fchunk = CHUNK_PLUS_OFFSET(fchunk, new_size);
+
+            SET_CHUNK_SIZE(fchunk, new_size);
+            SET_C_USED_AND_NEXT_P_USED(fchunk);
+            SET_FOOT(fchunk, prev_size - new_size);
+
+            SET_CHUNK_SIZE(new_fchunk, prev_size - new_size);
+            SET_C_USED_AND_NEXT_P_USED(new_fchunk);
+            SET_FOOT(new_fchunk, prev_size - new_size);
+
+            my_free(new_fchunk);
+
+        }
+        return ptr;
+    }
+    else {
+        my_free(ptr);
+        void *new_ptr = my_malloc(new_size);
+        memcpy(new_ptr, ptr, prev_size);
+        return new_ptr;
+    }
+}
+        
 
 void my_free(void *ptr) {
     
-    assert(ok_address(g_mstate, ptr));  //TODO generate warning
+    assert(ok_address(g_mstate, ptr));  
 
     chunkptr fchunk = MEM_TO_CHUNK(ptr);
     check_malloced_chunk(ptr, CHUNKSIZE(fchunk));
 
     if (IS_PREV_FREE(fchunk)) {
+#if TRACK_FREE
+        printf("Coalescing current free chunk with previous free chunk\n");
+#endif 
         chunkptr prev_chunk, new_fchunk; 
         size_t old_curr_size, old_prev_size;
 
@@ -314,6 +388,9 @@ void my_free(void *ptr) {
     }
     if (IS_NEXT_FREE(fchunk)) {
         if (NEXT_CHUNK(fchunk) == g_mstate->rchunk) {
+#if TRACK_FREE
+        printf("Next chunk is free and is rchunk, coalescing with rchunk & changing rchunk parameters\n");
+#endif 
             chunkptr new_rchunk; 
             size_t old_free_size;
             
@@ -332,6 +409,9 @@ void my_free(void *ptr) {
             return;
         }
         else {
+#if TRACK_FREE
+        printf("Next chunk is free, coalescing with it\n");
+#endif 
             chunkptr next_chunk, new_fchunk; 
             size_t old_curr_size, old_next_size;
 
