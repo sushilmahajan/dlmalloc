@@ -14,6 +14,17 @@
 extern mstate _g_mstate_;                                               
 #define g_mstate                 (&_g_mstate_)                                             
 
+#define FINISH_ALLOCATION(p, s)                             \
+{                                                           \
+    SET_C_USED_AND_NEXT_P_USED(p);                          \
+    mem = CHUNK_TO_MEM(p);                                  \
+    check_malloced_chunk(mem, s);                           \
+    allocated = 1;                                          \
+}
+void my_malloc_init(mstate *state);
+
+chunkptr split_chunk(chunkptr *ochunk_ptr, size_t new_size);
+
 /** \brief Allocates a block of given size in heap by finding suitable sized
  *         free block from heap 
  *  \param size Size of memory to be allocated 

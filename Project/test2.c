@@ -4,12 +4,10 @@
 #include "bins.h"
 
 int main() { 
-    int *a = (int*)my_malloc(512);
-    int *b = (int*)my_malloc(512);
-    int *c = (int*)my_malloc(512);
-    my_free(b);
+    int *a = (int*)my_malloc(28);
+    int *b = (int*)my_malloc(45);
     my_free(a);
-    a = (int*)my_malloc(512);
+    a = (int*)my_malloc(24);
     return 0;
 }
 //    chunk c1 = {640, 480};

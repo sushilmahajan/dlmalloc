@@ -2,201 +2,356 @@
 
 void insert_small_chunk(mstate *state, chunkptr ptr, size_t size) { 
     index_t i  = small_index(size);
-    chunkptr back = smallbin_at(state, i);
-    chunkptr front = back;
+    chunkptr base = smallbin_at(state, i);
+    chunkptr front = base;
 
     assert(size >= MIN_CHUNK_SIZE);                                                
 
     if (!smallmap_is_marked(state, i)) {        // Insert 1st chunk
         mark_smallmap(state, i);
     }
-    else if (ok_address(state, back->next)) {   // Insert at next position 
-        front = back->next;
+    else {   // Insert at next position 
+        front = base->next;
     }
     //  else {
     //    CORRUPTION_ERROR_ACTION(state);       TODO
     //  }                                                
-    back->next = ptr;
+ 
+    base->next = ptr;
     front->prev = ptr;
     ptr->next = front;
-    ptr->prev = back;
+    ptr->prev = base;
+
 #if DEBUG_BINS
+    printf("\n************Inserting small chunk of size %ld**************\n\n", size);
     printf("Small chunk of size %ld is inserted in smallbin with index %ld\n", size, i);
 #endif
 }                                                                              
 
-void remove_small_chunk(mstate *state, chunkptr ptr, size_t size) {                                      
-    chunkptr front = ptr->next;      
-    chunkptr back = ptr->prev;      
+chunkptr remove_small_chunk_by_address(mstate *state, chunkptr ptr) {
+    chunkptr base, front, p;
+    
+    size_t size = CHUNKSIZE(ptr);
     index_t i = small_index(size);
+    
+    base = smallbin_at(state, i);
+    p = base->prev;
+    
 #if DEBUG_BINS
+    printf("\n************Removing small chunk of size %ld from smallbin of index %ld using address**************\n\n", size, i);
     bool empty = 0;
 #endif
 
-    assert(ptr != back);            
-    assert(ptr != front);            
-    assert(chunksize(ptr) == small_index_to_size(i));
+    while ((p != ptr) && (p != base)) {
+        p = p->prev;
+    }
 
-    if ((ok_address(state, front)) && (ok_address(state, back))) {
-        if ((front == smallbin_at(state, i)) && (front == back)) {     
-            clear_smallmap(state, i);   // Remove only chunk, hence clear map
+    if (p == base) {
 #if DEBUG_BINS
-            empty = 1;
+    printf("Small chunk of given address not found\n");
 #endif
-        }
+        return NULL;
+    }
+
+    base = p->prev;
+    front = p->next;
+
+    assert(front != ptr);
+    assert(base != ptr);
+
+    if ((front == smallbin_at(state, i)) && (front == base)) {     
+        clear_smallmap(state, i);   // Remove only chunk, hence clear map
+#if DEBUG_BINS
+        empty = 1;
+#endif
     }
     //  else {
     //    CORRUPTION_ERROR_ACTION(state);       TODO
     //  } 
-
-    front->prev = back;
-    back->next = front;
+    
+    front->prev = base;
+    base->next = front;
 #if DEBUG_BINS
     printf("Small chunk of size %ld is removed from smallbin with index %ld\n", size, i);
     if (empty) {
         printf("Smallbin with index %ld is empty now\n", i);
     }
 #endif
+
+    return ptr;
 }
 
-/* Insert chunk into tree */
-void insert_large_chunk(mstate *M, tchunk *X, size_t S) { 
-    tbinptr* H; 
-    index_t I; 
-    compute_tree_index(S, I); 
-    H = treebin_at(M, I); 
-    X->index = I; 
-    X->child[0] = X->child[1] = 0; 
-    if (!treemap_is_marked(M, I)) { 
-        mark_treemap(M, I); 
-        *H = X; 
-        X->parent = (tchunkptr)H; 
-        X->next = X->prev = X; 
-    } 
-    else { 
-        tchunkptr T = *H; 
-        size_t K = S << leftshift_for_tree_index(I); 
-        while (1) { 
-            if (chunksize(T) != S) { 
-                tchunkptr* C = &(T->child[(K >> (SIZE_T_BITSIZE-SIZE_T_ONE)) & 1]); 
-                K <<= 1; 
-                if (*C != 0) 
-                    T = *C; 
-                else if (ok_address(M, C)) { 
-                    *C = X; 
-                    X->parent = T; 
-                    X->next = X->prev = X; 
-                    break; 
-                } 
-                else { 
-                    //           CORRUPTION_ERROR_ACTION(M); 
-                    break; 
-                } 
-            } 
-            else { 
-                tchunkptr F = T->next; 
-                if (ok_address(M, T) && ok_address(M, F)) { 
-                    T->next = F->prev = X; 
-                    X->next = F; 
-                    X->prev = T; 
-                    X->parent = 0; 
-                    break; 
-                } 
-                else { 
-                    //           CORRUPTION_ERROR_ACTION(M); 
-                    break; 
-                } 
-            } 
-        } 
-    } 
+chunkptr remove_small_chunk(mstate *state, size_t size) {                                      
+    chunkptr base, front, ptr;      
+    index_t i;
+
+#if DEBUG_BINS
+    printf("\n************Removing small chunk of size %ld**************\n\n", size);
+    bool empty = 0;
+#endif
+
+    i = small_index(size); 
+    base = smallbin_at(state, i);
+    ptr = base->next;    
+    front = ptr->next;
+
+    assert(front != ptr);
+    assert(base != ptr);
+
+    if ((front == smallbin_at(state, i)) && (front == base)) {     
+        clear_smallmap(state, i);   // Remove only chunk, hence clear map
+#if DEBUG_BINS
+        empty = 1;
+#endif
+    }
+    //  else {
+    //    CORRUPTION_ERROR_ACTION(state);       TODO
+    //  } 
+    
+    front->prev = base;
+    base->next = front;
+#if DEBUG_BINS
+    printf("Small chunk of size %ld is removed from smallbin with index %ld\n", size, i);
+    if (empty) {
+        printf("Smallbin with index %ld is empty now\n", i);
+    }
+#endif
+
+    return ptr;
 }
 
-/*
-   Unlink steps:
+void insert_large_chunk(mstate *state, tchunkptr ptr, size_t size) {
+    index_t i;
+    compute_tree_index(size, i);
+    tchunkptr *p;
+    p = treebin_at(state, i);
+    //ptr->index = i; 
+    ptr->left = ptr->right = 0; 
 
-   1. If x is a chained node, unlink it from its same-sized next/prev links
-   and choose its prev node as its replacement.
-   2. If x was the last node of its size, but not a leaf node, it must
-   be replaced with a leaf node (not merely one with an open left or
-   right), to make sure that lefts and rights of descendents
-   correspond properly to bit masks.  We use the rightmost descendent
-   of x.  We could use any other leaf, but this is easy to locate and
-   tends to counteract removal of leftmosts elsewhere, and so keeps
-   paths shorter than minimally guaranteed.  This doesn't loop much
-   because on average a node in a tree is near the bottom.
-   3. If x is the base of a chain (i.e., has parent links) relink
-   x's parent and children to x's replacement (or null if none).
-   */
-
-void unlink_large_chunk(mstate *M, tchunk *X) { 
-    tchunkptr XP = X->parent; 
-    tchunkptr R; 
-    if (X->prev != X) { 
-        tchunkptr F = X->next; 
-        R = X->prev; 
-        if (ok_address(M, F) && F->prev == X && R->next == X) { 
-            F->prev = R; 
-            R->next = F; 
-        } 
-        else { 
-            //CORRUPTION_ERROR_ACTION(M); 
-        } 
+#if DEBUG_BINS 
+    printf("\n************Inserting large chunk of size %ld**************\n\n", size);
+#endif
+    if (!treemap_is_marked(state, i)) { // Insert fisrt chunk at base of treebin
+        mark_treemap(state, i);          
+        *p = ptr; 
+        //ptr->parent = (tchunkptr)(*p); 
+        ptr->next = ptr->prev = ptr;
+#if DEBUG_BINS 
+        printf("Inserted first tree chunk of size %ld in treebin at index %ld\n", size, i);
+#endif
     } 
     else { 
-        tchunkptr* RP; 
-        if (((R = *(RP = &(X->child[1]))) != 0) || 
-                ((R = *(RP = &(X->child[0]))) != 0)) { 
-            tchunkptr* CP; 
-            while ((*(CP = &(R->child[1])) != 0) || 
-                    (*(CP = &(R->child[0])) != 0)) { 
-                R = *(RP = CP); 
-            } 
-            if (ok_address(M, RP)) 
-                *RP = 0; 
-            else { 
-                //    CORRUPTION_ERROR_ACTION(M); 
-            } 
-        } 
-    } 
-    if (XP != 0) { 
-        tbinptr* H = treebin_at(M, X->index); 
-        if (X == *H) { 
-            if ((*H = R) == 0)  
-                clear_treemap(M, X->index); 
-        } 
-        else if (ok_address(M, XP)) {
-            if (XP->child[0] == X)  
-                XP->child[0] = R; 
-            else  
-                XP->child[1] = R; 
-        } 
-        else { 
-            //            CORRUPTION_ERROR_ACTION(M); 
+        while (1) {
+            if (*p == NULL) {
+                *p = ptr;
+                ptr->next = ptr->prev = ptr;
+#if DEBUG_BINS 
+                printf("Inserted tree chunk of size %ld in treebin at index %ld\n", size, i);
+#endif
+                break;
+            }
+            else if (size == CHUNKSIZE(*p)) {
+                tchunkptr front = (*p)->next; 
+                if (ok_address(state, *p) && ok_address(state, front)) { 
+                    (*p)->next = front->prev = ptr; 
+                    ptr->next = front; 
+                    ptr->prev = *p; 
+                    //ptr->parent = NULL; 
+#if DEBUG_BINS 
+                    printf("Inserted tree chunk of size %ld in treebin at index %ld in a linked list\n", size, i);
+#endif
+                    break; 
+                } 
+
+            }
+            else if (size > CHUNKSIZE(*p)) {
+                p = &(*p)->right;
+#if DEBUG_BINS 
+                printf("Traversing treebin at index %ld & selected right child\n", i);
+#endif
+            }
+            else {
+                p = &(*p)->left;
+#if DEBUG_BINS 
+                printf("Traversing treebin at index %ld & selected left child\n", i);
+#endif
+            }
         }
-        if (R != 0) { 
-            if (ok_address(M, R)) { 
-                tchunkptr C0, C1; 
-                R->parent = XP; 
-                if ((C0 = X->child[0]) != 0) { 
-                    if (ok_address(M, C0)) { 
-                        R->child[0] = C0; 
-                        C0->parent = R; 
-                    } 
-                    else {
-                        //                      CORRUPTION_ERROR_ACTION(M); 
-                    }
-                } 
-                if ((C1 = X->child[1]) != 0) { 
-                    if (ok_address(M, C1)) { 
-                        R->child[1] = C1; 
-                        C1->parent = R; 
-                    } 
-                    //    else 
-                    //        CORRUPTION_ERROR_ACTION(M); 
-                } 
-            } 
-            //    else 
-            //        CORRUPTION_ERROR_ACTION(M); 
-        } 
-    } 
+    }
+}
+
+uint8_t search_large_chunk(mstate *state, tchunkptr *ptr,  size_t size) {
+    index_t i;
+    compute_tree_index(size, i);
+    tchunkptr *p;
+    p = treebin_at(state, i);
+
+#if DEBUG_BINS 
+    printf("\n************Searching large chunk of size %ld**************\n\n", size);
+#endif
+    while (1) {
+        if (*p == NULL) {
+            if (CHUNKSIZE(*ptr) < size) {
+                *ptr = NULL;
+            }
+#if DEBUG_BINS 
+            printf("Not Found, best found choice is %ld\n", CHUNKSIZE(*ptr));
+#endif
+            return 0;
+        }
+        else if (CHUNKSIZE(*p) == size) {
+            *ptr = *p;
+#if DEBUG_BINS 
+            printf("Chunk of size %ld is found\n", size);
+#endif
+            return 1;
+        }
+        else if (CHUNKSIZE(*p) < size) {
+            *ptr = *p;
+            p = &(*p)->right;
+#if DEBUG_BINS 
+                printf("Traversing treebin at index %ld & selected right child\n", i);
+#endif
+        }
+        else {
+            *ptr = *p;
+            p = &(*p)->left;
+#if DEBUG_BINS 
+                printf("Traversing treebin at index %ld & selected left child\n", i);
+#endif
+        }
+    }
+}
+
+tchunkptr min_sized_chunk(tchunkptr ptr) { 
+    tchunkptr current = ptr, prev = ptr; 
+  
+    /* loop sizeown to find the leftmost leaf */
+    while (current && current->left != NULL) {
+        ptr = current;
+        current = current->left; 
+    }
+  
+    return prev; 
+}  
+
+tchunkptr remove_large_chunk_by_address(mstate *state, tchunkptr ptr) {
+    tchunkptr *base, *p = &ptr, temp = ptr;
+    index_t i;
+    size_t size = CHUNKSIZE(ptr);
+    compute_tree_index(size, i);
+    base = treebin_at(state, i);
+    
+    if (*base == ptr) {
+        clear_treemap(state, i);
+    }
+
+#if DEBUG_BINS 
+    printf("\n************Removing large chunk of size %ld from tree of index %ld by address**************\n\n", size, i);
+#endif
+
+    if ((*p)->left == NULL) {
+#if DEBUG_BINS 
+        printf("Chunk of size %ld found, replacing it with right child\n", size);
+#endif
+        *p = (*p)->right;
+    }
+    else if ((*p)->right == NULL) {
+#if DEBUG_BINS 
+        printf("Chunk of size %ld found, replacing it with left child\n", size);
+#endif
+        *p = (*p)->left;
+    }
+    else {
+        tchunkptr prev_ptr = min_sized_chunk((*p)->right);
+#if DEBUG_BINS 
+        printf("Chunk of size %ld found, replacing it with minimum sized chunk in right sub-tree\n", size);
+#endif
+        tchunkptr temp1 = (*p)->left, temp2 = (*p)->right;
+        if (prev_ptr->left != NULL) {
+            **p = *(prev_ptr->left);
+            (*p)->left = temp1;
+            (*p)->right = temp2;
+            prev_ptr->left = NULL;
+        }
+        else {
+            **p = *prev_ptr;
+            (*p)->left = temp1;
+            (*p)->right = temp2;
+            (*p)->right = NULL;
+        }
+    }
+    return temp;
+}
+
+tchunkptr remove_large_chunk(mstate *state, size_t size) {
+    tchunkptr *p, *base;
+    index_t i;
+    compute_tree_index(size, i);
+    
+#if DEBUG_BINS 
+    printf("\n************Removing large chunk of size %ld from tree of index %ld**************\n\n", size, i);
+#endif
+    base = p = treebin_at(state, i);
+
+    while (1) {
+        if (*p == NULL) {
+#if DEBUG_BINS 
+                    printf("Chunk of size %ld not found\n", size);
+#endif
+            return *p;
+        }
+        else if (CHUNKSIZE(*p) == size) {
+            tchunkptr ptr = *p;
+            if ((ptr == *base) && (ptr->next == ptr)) {
+                clear_treemap(state, i);
+            }
+            if ((*p)->left == NULL) {
+#if DEBUG_BINS 
+                    printf("Chunk of size %ld found, replacing it with right child\n", size);
+#endif
+                *p = (*p)->right;
+                return ptr;
+            }
+            else if ((*p)->right == NULL) {
+#if DEBUG_BINS 
+                    printf("Chunk of size %ld found, replacing it with left child\n", size);
+#endif
+                *p = (*p)->left;
+                return ptr;
+            }
+            else {
+                tchunkptr prev_ptr = min_sized_chunk((*p)->right);
+#if DEBUG_BINS 
+                    printf("Chunk of size %ld found, replacing it with minimum sized chunk in right sub-tree\n", size);
+#endif
+                tchunkptr temp1 = (*p)->left, temp2 = (*p)->right;
+                if (prev_ptr->left != NULL) {
+                    **p = *(prev_ptr->left);
+                    (*p)->left = temp1;
+                    (*p)->right = temp2;
+                    prev_ptr->left = NULL;
+                }
+                else {
+                    **p = *prev_ptr;
+                    (*p)->left = temp1;
+                    (*p)->right = temp2;
+                    (*p)->right = NULL;
+                }
+                return ptr;
+            }
+        }
+        else if (size > CHUNKSIZE(*p)) {
+#if DEBUG_BINS 
+                printf("Traversing treebin at index %ld & selected right child\n", i);
+#endif
+            p = &(*p)->right;
+        }
+        else {
+#if DEBUG_BINS 
+                printf("Traversing treebin at index %ld & selected left child\n", i);
+#endif
+            p = &(*p)->left;
+        }
+    }
 }

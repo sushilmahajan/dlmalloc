@@ -7,16 +7,16 @@
 
 #include "error.h"
 #include "debug.h"
+#include <stdlib.h>
 
 #define MMAP_ENABLED            (0)
 #define MMAP_THRESHOLD          (128 * 1024)
 
 /** \brief Reads the start address of heap memory from file 
  * /proc/pid/maps 
- *  \param pid Process id of current process/program
  *  \return Start address of heap of current process
  * */
-void *get_start_address(uint32_t pid);
+void *get_start_address(void);
 
 /** \brief Gives end address of heap memory of current process using sbrk 
  * system call 
@@ -32,7 +32,7 @@ void *get_end_address(void);
  *  \return size if memory was allocated successfully, 
  *          0 if nothing was allocated
  * */
-uint32_t get_mem_from_sys(size_t *new_start_ptr, uint32_t size);
+void* get_mem_from_sys(size_t size);
 
 /** \brief Shrinks heap size by brk
  *  \param ptr Address of free block after which memory has to be deallocated

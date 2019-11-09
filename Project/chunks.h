@@ -15,18 +15,19 @@ typedef struct chunk {
 
 typedef struct tree_chunk {            
     /* First 4 parameter names should be same as chunk TODO */    
-    size_t prev_foot;                                         
-    size_t head;                                              
-    struct tree_chunk *prev;                                                
-    struct tree_chunk *next;                                                                                                          
-    struct tree_chunk *child[2];                                          
-    struct tree_chunk *parent;                                            
-    index_t index;                                             
+    size_t prev_foot;
+    size_t head;     
+    struct tree_chunk *prev;
+    struct tree_chunk *next;                                                               
+    struct tree_chunk *left;
+    struct tree_chunk *right;
+//    struct tree_chunk *parent;                                            
+//    index_t index;                                             
 } tchunk;                                                                            
 
 typedef chunk* chunkptr;
 typedef chunk* sbinptr;
-typedef chunk* tbinptr;
+typedef tchunk* tbinptr;
 
 typedef tchunk* tchunkptr;
 
@@ -51,15 +52,23 @@ typedef tchunk* tchunkptr;
 
 /* Conversion from malloc headers to user pointers, and back */                
 #define CHUNK_TO_MEM(p)     ((void*)((char*)(p) + SIZEOF_TWO_SIZE_T))     
-#define MEM_to_CHUNK(mem)   ((chunkptr)((char*)(mem) - SIZEOF_TWO_SIZE_T))     
+#define MEM_TO_CHUNK(mem)   ((chunkptr)((char*)(mem) - SIZEOF_TWO_SIZE_T))     
+
+/* Treat space at ptr +/- offset as a chunk */                                 
+#define CHUNK_PLUS_OFFSET(p, s)  ((chunkptr)(((char*)(p)) + (s)))             
+#define CHUNK_MINUS_OFFSET(p, s) ((chunkptr)(((char*)(p)) - (s)))             
+
+#define MAKE_CHUNK_USABLE(p)                                                \
+{                                                                           \
+    memset(((char*)(p)+CHUNK_OVERHEAD), 0, CHUNKSIZE(p)-CHUNK_OVERHEAD);    \
+}
 
 /* Chunk associated with aligned address A */                                  
 #define ALIGN_AS_CHUNK(A)   (chunkptr)((A) + ALIGN_OFFSET(CHUNK_TO_MEM(A)))      
                                                                                
 /* Bounds on request (not chunk) sizes. */                                     
 #define MAX_REQUEST         ((-MIN_CHUNK_SIZE) << 2)    // TODO change                       
-#define MIN_REQUEST         (MIN_CHUNK_SIZE - CHUNK_OVERHEAD - SIZE_T_ONE) 
-//TODO 0
+#define MIN_REQUEST         (MIN_CHUNK_SIZE - CHUNK_OVERHEAD) 
 
 /* Pad request bytes into a usable size */                                     
 #define PAD_REQUEST(req)        \
@@ -71,30 +80,53 @@ typedef tchunk* tchunkptr;
 #define FLAG_BITS           (P_USED_BIT | C_USED_BIT)                            
                                                                                
 /* Extraction of fields from head words */                                     
-#define c_used(p)           ((p)->head & C_USED_BIT)                           
-#define p_used(p)           ((p)->head & P_USED_BIT)                           
+#define C_USED(p)           ((p)->head & C_USED_BIT)                           
+#define P_USED(p)           ((p)->head & P_USED_BIT)   
 // #define is_inuse(p)         (((p)->head & FLAG_BITS) != P_USED_BIT)  TODO remove         
                                                                                
-#define chunksize(p)        ((p)->head & ~(CHUNK_ALIGN_MASK))   // FLAG_BITS                       
-                                                                               
-#define clear_p_used(p)     ((p)->head &= ~P_USED_BIT)                         
-#define clear_c_used(p)     ((p)->head &= ~C_USED_BIT)                         
-                                                                               
+#define CHUNKSIZE(p)        ((p)->head & ~(CHUNK_ALIGN_MASK))   // FLAG_BITS                       
+
+#define SET_CHUNK_SIZE(p, s)                            \
+    ((p)->head = ((s) | ((p)->head & CHUNK_ALIGN_MASK)))   
+
+#define CLEAR_P_USED(p)     ((p)->head &= ~P_USED_BIT)                         
+#define CLEAR_C_USED(p)     ((p)->head &= ~C_USED_BIT)                         
+
+#define SET_P_USED(p)     ((p)->head |= P_USED_BIT)
+#define SET_C_USED(p)     ((p)->head |= C_USED_BIT)
+
 /* Pointer to next or previous physical malloc_chunk. */                           
-#define next_chunk(p) ((chunkptr)( ((char*)(p)) + ((p)->head & ~CHUNK_ALIGN_MASK))) // FLAG_BITS 
-#define prev_chunk(p) ((chunkptr)( ((char*)(p)) - ((p)->prev_foot) ))         
+#define NEXT_CHUNK(p) ((chunkptr)( ((char*)(p)) + ((p)->head & ~CHUNK_ALIGN_MASK))) // FLAG_BITS 
+#define PREV_CHUNK(p) ((chunkptr)( ((char*)(p)) - ((p)->prev_foot) ))         
                                                                                
 /* Extract next chunk's p_used bit */                                          
 #define next_p_used(p)  ((next_chunk(p)->head) & P_USED_BIT)                   
 
 /* Get/set size at footer */                                                   
-#define get_foot(p, s)  (((chunkptr)((char*)(p) + (s)))->prev_foot)           
-#define set_foot(p, s)  (((chunkptr)((char*)(p) + (s)))->prev_foot = (s))     
+#define GET_FOOT(p, s)  (NEXT_CHUNK(p)->prev_foot)           
+#define SET_FOOT(p, s)  (NEXT_CHUNK(p)->prev_foot = (s))     
                                                                                
-/* Set size, p_used bit, and foot TODO remove */                                           
-#define set_size_and_p_used_of_free_chunk(p, s) \
-    ((p)->head = (s|P_USED_BIT), set_foot(p, s))                                 
-                                                                               
+/* Set size, p_used bit, and foot */                                           
+#define SET_C_USED_AND_NEXT_P_USED(p) \
+{                                       \
+    SET_C_USED(p);                      \
+    SET_P_USED(NEXT_CHUNK(p));          \
+}
+
+#define CLEAR_C_USED_AND_NEXT_P_USED(p) \
+{                                       \
+    CLEAR_C_USED(p);                    \
+    CLEAR_P_USED(NEXT_CHUNK(p));        \
+}
+#define CHECK_INUSE_CHUNK(p)                    \
+{                                               \
+    assert(C_USED(p));                          \
+    assert(P_USED(NEXT_CHUNK(p)));              \
+}
+
+#define IS_PREV_FREE(p)                 (!P_USED(p))
+#define IS_NEXT_FREE(p)                 (!C_USED(NEXT_CHUNK(p)))
+
 /* Set size, p_used bit, foot, and clear next p_used TODO remove */                        
 #define set_free_with_p_used(p, s, n)   \
     (clear_p_used(n), set_size_and_p_used_of_free_chunk(p, s))                   

@@ -1,4 +1,73 @@
 
+
+
+//                else if ((treebits = g_mstate->treemap)) { // if treebins are non-empty choose smallest tree bin
+//                    index_t i;
+//                    binmap_t leastbit = LEAST_BIT(treebits);
+//                    i = (leastbit += (i+1));
+//
+//                    tchunkptr *base, o_tptr;
+//                    base = treebin_at(g_mstate, i);
+//                    o_tptr = min_sized_chunk(*base);
+//                    if (o_tptr->left != NULL) {
+//                        o_tptr = o_tptr->left;
+//                    }
+//                    o_tptr = remove_large_chunk(g_mstate, CHUNKSIZE(o_tptr));
+//
+//                    if ((CHUNKSIZE(o_tptr) - size) <= MIN_LARGE_SIZE) { // if size difference >= 512 split & use 
+//
+//                        // split into small & tree chunk
+//                        // SET_C_USED_AND_NEXT_P_USED(new_ptr);                    
+//                        // mem = CHUNK_TO_MEM(optr);
+//                        // check_malloced_chunk(mem, size);                                     
+//                        // allocated = 1; 
+//                        // break;
+//                    }
+//                    else {                          // else into two small chunks 
+//                        // split into two small chunks
+//                        // SET_C_USED_AND_NEXT_P_USED(new_ptr);                    
+//                        // mem = CHUNK_TO_MEM(optr);
+//                        // check_malloced_chunk(mem, size);                                     
+//                        // allocated = 1; 
+//                        // break;
+//                    }
+//                }
+//    remove_small_chunk_by_address(g_mstate, &c1);
+//    remove_small_chunk_by_address(g_mstate, &c2);
+//    remove_small_chunk_by_address(g_mstate, &c3);
+//    remove_small_chunk_by_address(g_mstate, &c4);
+//    remove_small_chunk_by_address(g_mstate, &c5);
+
+//    chunkptr *ochunk;
+//    chunkptr temp;
+//    ochunk = &temp;
+//    *ochunk = &c5;
+//    chunkptr new_chunk = split_chunk(ochunk, 32);
+//    printf("%ld %ld\n", (*ochunk)->prev_foot, (*ochunk)->head);
+//    printf("%ld %ld\n", (new_chunk)->prev_foot, (new_chunk)->head);
+    return 0;
+}
+//
+//    search_large_chunk(g_mstate, found, 768);
+//    search_large_chunk(g_mstate, found, 800);
+//    search_large_chunk(g_mstate, found, 896);
+//    search_large_chunk(g_mstate, found, 912);
+//    search_large_chunk(g_mstate, found, 960);
+    
+//    size_t i, j, k;
+//    for (i = 512; i < 0xFFFFFFFF; i <<= 1) {
+//        compute_tree_index(i/2+1, j);
+//        printf("%ld %ld %ld %ld\n", j, i/2+1, leftshift_for_tree_index(j), CHILD(i/2+1, j));
+//        compute_tree_index(i + (i >> 1)/2+1, j);
+//        printf("%ld %ld %ld %ld\n", j, (i + (i >> 1))/2+1, leftshift_for_tree_index(j), CHILD((i + (i >> 1))/2+1, j));
+//    }
+
+//    size_t I;
+//    for (size_t i = 0; i <= 512; i += 8) {
+//        printf("%ld %ld %ld %ld\n", i, LEAST_BIT(i), 0x1 << LEAST_BIT(i), small_index(0x1 << (LEAST_BIT(i))));
+//        BIT_TO_IDX(i, I);
+//        printf("%ld\n", I);
+//    }
 ///* Unlink the first chunk from a smallbin */                                   
 //void unlink_first_small_chunk(mstate *M, chunkptr B, chunkptr P, index_t I) { 
 //    chunkptr F = P->next;  
@@ -34,3 +103,155 @@
 //    //  }                              
 //}                                       
 
+///* \brief Insert chunk into tree */
+//void insert_large_chunk(mstate *M, tchunk *X, size_t S) { 
+//    tbinptr H; 
+//    index_t I; 
+//    compute_tree_index(S, I); 
+//    H = treebin_at(M, I); 
+//    X->index = I; 
+//    X->child[0] = X->child[1] = 0; 
+//    if (!treemap_is_marked(M, I)) { // Insert fisrt chunk at base of treebin
+//        mark_treemap(M, I);          
+//        H = X; 
+//        X->parent = (tchunkptr)H; 
+//        X->next = X->prev = X;
+//#if DEBUG_BINS 
+//        printf("Inserted first tree chunk of size %ld in treebin at index %ld\n", S, I);
+//#endif
+//    } 
+//    else { 
+//        tchunkptr T = H; 
+//        while (1) { 
+//            if (chunksize(T) != S) { 
+//                tchunkptr* C = &(T->child[CHILD(S, I)]);
+//                if (*C != NULL)  {  //  Move to child according to size
+//                    T = *C;      
+//#if DEBUG_BINS 
+//                    printf("Traversing treebin at index %ld & selected child %ld\n", I, CHILD(S, I));
+//#endif
+//                }
+//                else if (ok_address(M, C)) { 
+//                    *C = X;     
+//                    X->parent = T; 
+//                    X->next = X->prev = X; 
+//#if DEBUG_BINS 
+//                    printf("Inserted tree chunk of size %ld in treebin at index %ld at child %ld\n", S, I, CHILD(S, I));
+//#endif
+//                    break; 
+//                } 
+//                else { 
+//                    //  CORRUPTION_ERROR_ACTION(M); 
+//                    break; 
+//                } 
+//            } 
+//            else { 
+//                tchunkptr F = T->next; 
+//                if (ok_address(M, T) && ok_address(M, F)) { 
+//                    T->next = F->prev = X; 
+//                    X->next = F; 
+//                    X->prev = T; 
+//                    X->parent = NULL; 
+//#if DEBUG_BINS 
+//                    printf("Inserted tree chunk of size %ld in treebin at index %ld in a linked list\n", S, I);
+//#endif
+//                    break; 
+//                } 
+//                else { 
+//                    //  CORRUPTION_ERROR_ACTION(M); 
+//                    break; 
+//                } 
+//            } 
+//        } 
+//    } 
+//}
+//
+///*
+//   Unlink steps:
+//
+//   1. If x is a chained node, unlink it from its same-sized next/prev links
+//   and choose its prev node as its replacement.
+//   2. If x was the last node of its size, but not a leaf node, it must
+//   be replaced with a leaf node (not merely one with an open left or
+//   right), to make sure that lefts and rights of descendents
+//   correspond properly to bit masks.  We use the rightmost descendent
+//   of x.  We could use any other leaf, but this is easy to locate and
+//   tends to counteract removal of leftmosts elsewhere, and so keeps
+//   paths shorter than minimally guaranteed.  This doesn't loop much
+//   because on average a node in a tree is near the bottom.
+//   3. If x is the base of a chain (i.e., has parent links) relink
+//   x's parent and children to x's replacement (or null if none).
+//   */
+//
+//void unlink_large_chunk(mstate *M, tchunk *X) { 
+//    tchunkptr XP = X->parent; 
+//    tchunkptr R; 
+//    if (X->prev != X) { 
+//        tchunkptr F = X->next; 
+//        R = X->prev; 
+//        if (ok_address(M, F) && F->prev == X && R->next == X) { 
+//            F->prev = R; 
+//            R->next = F; 
+//        } 
+//        else { 
+//            //CORRUPTION_ERROR_ACTION(M); 
+//        } 
+//    } 
+//    else { 
+//        tchunkptr* RP; 
+//        if (((R = *(RP = &(X->child[1]))) != 0) || 
+//                ((R = *(RP = &(X->child[0]))) != 0)) { 
+//            tchunkptr* CP; 
+//            while ((*(CP = &(R->child[1])) != 0) || 
+//                    (*(CP = &(R->child[0])) != 0)) { 
+//                R = *(RP = CP); 
+//            } 
+//            if (ok_address(M, RP)) 
+//                *RP = 0; 
+//            else { 
+//                //    CORRUPTION_ERROR_ACTION(M); 
+//            } 
+//        } 
+//    } 
+//    if (XP != 0) { 
+//        tbinptr H = treebin_at(M, X->index); 
+//        if (X == H) { 
+//            if ((H = R) == 0)  
+//                clear_treemap(M, X->index); 
+//        } 
+//        else if (ok_address(M, XP)) {
+//            if (XP->child[0] == X)  
+//                XP->child[0] = R; 
+//            else  
+//                XP->child[1] = R; 
+//        } 
+//        else { 
+//            //            CORRUPTION_ERROR_ACTION(M); 
+//        }
+//        if (R != 0) { 
+//            if (ok_address(M, R)) { 
+//                tchunkptr C0, C1; 
+//                R->parent = XP; 
+//                if ((C0 = X->child[0]) != 0) { 
+//                    if (ok_address(M, C0)) { 
+//                        R->child[0] = C0; 
+//                        C0->parent = R; 
+//                    } 
+//                    else {
+//                        //                      CORRUPTION_ERROR_ACTION(M); 
+//                    }
+//                } 
+//                if ((C1 = X->child[1]) != 0) { 
+//                    if (ok_address(M, C1)) { 
+//                        R->child[1] = C1; 
+//                        C1->parent = R; 
+//                    } 
+//                    //    else 
+//                    //        CORRUPTION_ERROR_ACTION(M); 
+//                } 
+//            } 
+//            //    else 
+//            //        CORRUPTION_ERROR_ACTION(M); 
+//        } 
+//    } 
+//}

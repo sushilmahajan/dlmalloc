@@ -4,14 +4,15 @@
 #include "bins.h"
 
 int main() { 
-    int *a = (int*)my_malloc(512);
-    int *b = (int*)my_malloc(512);
-    int *c = (int*)my_malloc(512);
-    my_free(b);
-    my_free(a);
-    a = (int*)my_malloc(512);
+    int *a = (int*)my_malloc(1024);
+    for (int i = 0; i < 256; i++) {
+        *(a+i) = i;
+        printf("%d\n", *(a+i));
+    }
     return 0;
 }
+//    printf("\n");
+//    print(a, (a+300));
 //    chunk c1 = {640, 480};
 //    chunk c2 = {480, 496};
 //    chunk c3 = {128, 304};
