@@ -14,20 +14,16 @@ typedef struct chunk {
 } chunk;
 
 typedef struct tree_chunk {            
-    /* First 4 parameter names should be same as chunk TODO */    
+    /* First 4 parameter names should be same as chunk */    
     size_t prev_foot;
     size_t head;     
     struct tree_chunk *prev;
     struct tree_chunk *next;                                                               
     struct tree_chunk *left;
     struct tree_chunk *right;
-//    struct tree_chunk *parent;                                            
-//    index_t index;                                             
 } tchunk;                                                                            
 
 typedef chunk* chunkptr;
-typedef chunk* sbinptr;
-typedef tchunk* tbinptr;
 
 typedef tchunk* tchunkptr;
 
@@ -42,11 +38,6 @@ typedef tchunk* tchunkptr;
 #define CHUNK_SIZE          (sizeof(chunk))
 #define CHUNK_OVERHEAD      (SIZEOF_TWO_SIZE_T)
 
-/* The number of bytes to offset an address to align it */                     
-#define ALIGN_OFFSET(A)                             \
-    ((((size_t)(A) & CHUNK_ALIGN_MASK) == 0)? 0 :   \
-     ((MALLOC_ALIGNMENT - ((size_t)(A) & CHUNK_ALIGN_MASK)) & CHUNK_ALIGN_MASK))  
-
 /* The smallest size we can malloc is an aligned minimal chunk */              
 #define MIN_CHUNK_SIZE      (CHUNK_SIZE)
 
@@ -58,33 +49,20 @@ typedef tchunk* tchunkptr;
 #define CHUNK_PLUS_OFFSET(p, s)  ((chunkptr)(((char*)(p)) + (s)))             
 #define CHUNK_MINUS_OFFSET(p, s) ((chunkptr)(((char*)(p)) - (s)))             
 
-#define MAKE_CHUNK_USABLE(p)                                                \
-{                                                                           \
-    memset(((char*)(p)+CHUNK_OVERHEAD), 0, CHUNKSIZE(p)-CHUNK_OVERHEAD);    \
-}
-
-/* Chunk associated with aligned address A */                                  
-#define ALIGN_AS_CHUNK(A)   (chunkptr)((A) + ALIGN_OFFSET(CHUNK_TO_MEM(A)))      
-                                                                               
-/* Bounds on request (not chunk) sizes. */                                     
-#define MAX_REQUEST         ((-MIN_CHUNK_SIZE) << 2)    // TODO change                       
-#define MIN_REQUEST         (MIN_CHUNK_SIZE - CHUNK_OVERHEAD) 
-
 /* Pad request bytes into a usable size */                                     
 #define PAD_REQUEST(req)        \
     (((req) + CHUNK_OVERHEAD + CHUNK_ALIGN_MASK) & ~CHUNK_ALIGN_MASK)           
-                                                                               
+
 
 #define P_USED_BIT          (SIZE_T_ONE)                                       
 #define C_USED_BIT          (SIZE_T_TWO)                                       
 #define FLAG_BITS           (P_USED_BIT | C_USED_BIT)                            
-                                                                               
+
 /* Extraction of fields from head words */                                     
 #define C_USED(p)           ((p)->head & C_USED_BIT)                           
 #define P_USED(p)           ((p)->head & P_USED_BIT)   
-// #define is_inuse(p)         (((p)->head & FLAG_BITS) != P_USED_BIT)  TODO remove         
-                                                                               
-#define CHUNKSIZE(p)        ((p)->head & ~(CHUNK_ALIGN_MASK))   // FLAG_BITS                       
+
+#define CHUNKSIZE(p)        ((p)->head & ~(CHUNK_ALIGN_MASK))                          
 
 #define SET_CHUNK_SIZE(p, s)                            \
     ((p)->head = ((s) | ((p)->head & CHUNK_ALIGN_MASK)))   
@@ -96,16 +74,16 @@ typedef tchunk* tchunkptr;
 #define SET_C_USED(p)     ((p)->head |= C_USED_BIT)
 
 /* Pointer to next or previous physical malloc_chunk. */                           
-#define NEXT_CHUNK(p) ((chunkptr)( ((char*)(p)) + ((p)->head & ~CHUNK_ALIGN_MASK))) // FLAG_BITS 
+#define NEXT_CHUNK(p) ((chunkptr)( ((char*)(p)) + ((p)->head & ~CHUNK_ALIGN_MASK))) 
 #define PREV_CHUNK(p) ((chunkptr)( ((char*)(p)) - ((p)->prev_foot) ))         
-                                                                               
+
 /* Extract next chunk's p_used bit */                                          
 #define next_p_used(p)  ((next_chunk(p)->head) & P_USED_BIT)                   
 
 /* Get/set size at footer */                                                   
 #define GET_FOOT(p, s)  (NEXT_CHUNK(p)->prev_foot)           
 #define SET_FOOT(p, s)  (NEXT_CHUNK(p)->prev_foot = (s))     
-                                                                               
+
 /* Set size, p_used bit, and foot */                                           
 #define SET_C_USED_AND_NEXT_P_USED(p) \
 {                                       \
@@ -127,8 +105,4 @@ typedef tchunk* tchunkptr;
 #define IS_PREV_FREE(p)                 (!P_USED(p))
 #define IS_NEXT_FREE(p)                 (!C_USED(NEXT_CHUNK(p)))
 
-/* Set size, p_used bit, foot, and clear next p_used TODO remove */                        
-#define set_free_with_p_used(p, s, n)   \
-    (clear_p_used(n), set_size_and_p_used_of_free_chunk(p, s))                   
-                                                                               
 #endif

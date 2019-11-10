@@ -8,41 +8,6 @@
 
 mstate _g_mstate_;
 
-void my_malloc_init(mstate *state) {
-    state->initialized = 1;
-    state->start_addr = (char*)get_start_address();
-    state->end_addr = (char*)get_end_address();
-
-    /* Set begin chunk */
-    state->bchunk = (chunkptr)state->start_addr;
-    state->bsize = BEGIN_SIZE;
-    /* Set begin chunk parameters in physical memory */
-    SET_CHUNK_SIZE(state->bchunk, state->bsize);
-    SET_P_USED(state->bchunk);
-    SET_C_USED(state->bchunk);
-    SET_FOOT(state->bchunk, state->bsize);
-
-    /* Set top chunk */
-    state->top = CHUNK_MINUS_OFFSET(state->end_addr, TOP_SIZE);
-    state->topsize = TOP_SIZE;
-    /* Set top chunk parameters in physical memory */
-    SET_CHUNK_SIZE(state->top, state->topsize);
-    SET_C_USED(state->top);
-
-    /* Set rchunk */
-    state->rchunk = CHUNK_PLUS_OFFSET(state->start_addr, 32);
-    state->rsize = ((size_t)(state->end_addr - state->start_addr) - state->topsize - state->bsize);
-    /* Set rchunk parameters  in physical memory */
-    SET_CHUNK_SIZE(state->rchunk, state->rsize);
-    SET_P_USED(state->rchunk);
-    CLEAR_C_USED(state->rchunk);
-    SET_FOOT(state->rchunk, state->rsize);
-    //MAKE_CHUNK_USABLE(state->rchunk);
-
-    state->smallmap = 0;
-    state->treemap = 0;
-}
-
 chunkptr split_small_chunk(mstate *state, chunkptr ochunk_ptr, size_t size) {   //TODO test
     chunkptr new_chunk_ptr;
     size_t ochunk_new_size; 
@@ -103,6 +68,7 @@ chunkptr split_rchunk(mstate *state, size_t size) {   //TODO test
 
     SET_CHUNK_SIZE(o_rchunk_ptr, o_rchunk_new_size);
     SET_P_USED(o_rchunk_ptr);
+    CLEAR_C_USED(o_rchunk_ptr);
     SET_FOOT(o_rchunk_ptr, o_rchunk_new_size);
 
     state->rchunk = o_rchunk_ptr;
@@ -110,62 +76,46 @@ chunkptr split_rchunk(mstate *state, size_t size) {   //TODO test
 
     SET_CHUNK_SIZE(new_chunk_ptr, size);
     SET_C_USED(new_chunk_ptr);
+    SET_P_USED(new_chunk_ptr);
     SET_FOOT(new_chunk_ptr, size);
 
     return new_chunk_ptr;
 }
 
-chunkptr allocate_from_larger_smallbins(mstate *state, size_t size) {
-    index_t i = small_index(size);
-    binmap_t smallbits = state->smallmap;
-    smallbits >>= (++i);
-    
-    if (!smallbits) {
-        return NULL;
-    }
-    else {
-        chunkptr s_ptr, new_ptr;
-        
-        i += LEAST_BIT(smallbits);
-        size_t big_size = IDX_TO_SIZE(i);
-       
-        s_ptr = remove_small_chunk(g_mstate, big_size);
-        if ((big_size - size) < MIN_CHUNK_SIZE) {
-            return s_ptr;
-        }
-        
-        new_ptr = split_small_chunk(state, s_ptr, size);
-        return new_ptr;
-    }
-}
+void my_malloc_init(mstate *state) {
+    state->initialized = 1;
+    state->start_addr = (char*)get_start_address();
+    state->end_addr = (char*)get_end_address();
 
-chunkptr allocate_from_larger_treebins(mstate *state, size_t size) {
-    index_t i;
-    compute_tree_index(size, i);
-    binmap_t treebits = state->treemap;
-    treebits >>= (++i);
-    
-    if (!treebits) {
-        return NULL;
-    }
-    else {
-        tchunkptr *base, o_tptr;
-        chunkptr new_ptr;
-        
-        i += LEAST_BIT(treebits);
-        base = treebin_at(g_mstate, i);
-        
-        o_tptr = min_sized_chunk(*base);
-        if (o_tptr->left != NULL) {
-            o_tptr = o_tptr->left;
-        }
-        
-        o_tptr = remove_large_chunk_by_address(g_mstate, o_tptr);
-        
-        new_ptr = split_tree_chunk(state, o_tptr, size);
+    /* Set begin chunk */
+    state->bchunk = (chunkptr)state->start_addr;
+    state->bsize = BEGIN_SIZE;
+    /* Set begin chunk parameters in physical memory */
+    SET_CHUNK_SIZE(state->bchunk, state->bsize);
+    SET_P_USED(state->bchunk);
+    SET_C_USED(state->bchunk);
+    SET_FOOT(state->bchunk, state->bsize);
 
-        return new_ptr;
-    }
+    /* Set top chunk */
+    state->top = CHUNK_MINUS_OFFSET(state->end_addr, TOP_SIZE);
+    state->topsize = TOP_SIZE;
+    /* Set top chunk parameters in physical memory */
+    SET_CHUNK_SIZE(state->top, state->topsize);
+    SET_C_USED(state->top);
+    CLEAR_P_USED(state->top);
+
+    /* Set rchunk */
+    state->rchunk = CHUNK_PLUS_OFFSET(state->start_addr, 32);
+    state->rsize = ((size_t)(state->end_addr - state->start_addr) - state->topsize - state->bsize);
+    /* Set rchunk parameters  in physical memory */
+    SET_CHUNK_SIZE(state->rchunk, state->rsize);
+    SET_P_USED(state->rchunk);
+    CLEAR_C_USED(state->rchunk);
+    SET_FOOT(state->rchunk, state->rsize);
+    //MAKE_CHUNK_USABLE(state->rchunk);
+
+    state->smallmap = 0;
+    state->treemap = 0;
 }
 
 uint8_t sys_alloc(mstate *state) {
@@ -198,8 +148,67 @@ void check_malloced_chunk(void *mem, size_t s) {
     }
 } 
 
+
+chunkptr allocate_from_larger_smallbins(mstate *state, size_t size) {
+    index_t i = small_index(size);
+    binmap_t smallbits = state->smallmap;
+    smallbits >>= (i+1);
+    
+    if (!smallbits) {
+        return NULL;
+    }
+    else {
+        chunkptr s_ptr, new_ptr;
+        
+        i += LEAST_BIT(smallbits);
+        size_t big_size = IDX_TO_SIZE(i);
+       
+        s_ptr = remove_small_chunk(state, big_size);
+        if ((big_size - size) < MIN_CHUNK_SIZE) {
+            return s_ptr;
+        }
+        
+        new_ptr = split_small_chunk(state, s_ptr, size);
+        return new_ptr;
+    }
+}
+
+chunkptr allocate_from_larger_treebins(mstate *state, size_t size) {
+    index_t i;
+    compute_tree_index(size, i);
+    if (i)
+        i++;
+    binmap_t treebits = state->treemap;
+    treebits >>= i;
+    
+    if (!treebits) {
+        return NULL;
+    }
+    else {
+        tchunkptr *base, o_tptr;
+        chunkptr new_ptr;
+        
+        i += (LEAST_BIT(treebits)-1);
+        base = treebin_at(state, i);
+        
+        o_tptr = min_sized_chunk(*base);
+        if (o_tptr->left != NULL) {
+            o_tptr = o_tptr->left;
+        }
+        
+        o_tptr = remove_large_chunk_by_address(g_mstate, o_tptr);
+        
+        new_ptr = split_tree_chunk(state, o_tptr, size);
+
+        return new_ptr;
+    }
+}
+
 void *my_malloc(size_t bytes) 
 {    
+#if TRACK_MALLOC
+            printf("\n**************Call to malloc begins***************\n\n");
+#endif
     if (!(g_mstate->initialized)) {
         my_malloc_init(g_mstate);
     }
@@ -238,6 +247,9 @@ void *my_malloc(size_t bytes)
                 FINISH_ALLOCATION(ptr, size);
                 *tptr = NULL;
             }
+        }
+        else {
+            *tptr = NULL;
         }
     }
     while (!allocated) {
@@ -293,6 +305,9 @@ void *my_malloc(size_t bytes)
             }
         }
     }
+#if TRACK_MALLOC
+            printf("\n**************Call to malloc ends***************\n\n");
+#endif
     if (allocated == 0) {
         return NULL;
     }
@@ -315,7 +330,7 @@ void *my_calloc(size_t num, size_t size) {
 
 void *my_realloc(void *ptr, size_t new_size) {
 
-    assert(ok_address(g_mstate, ptr));  
+    assert(OK_ADDRESS(g_mstate, ptr));  
 
     chunkptr fchunk = MEM_TO_CHUNK(ptr);
     check_malloced_chunk(ptr, CHUNKSIZE(fchunk));
@@ -336,23 +351,26 @@ void *my_realloc(void *ptr, size_t new_size) {
             SET_C_USED_AND_NEXT_P_USED(new_fchunk);
             SET_FOOT(new_fchunk, prev_size - new_size);
 
-            my_free(new_fchunk);
+            my_free(CHUNK_TO_MEM(new_fchunk));
 
         }
         return ptr;
     }
     else {
-        my_free(ptr);
         void *new_ptr = my_malloc(new_size);
         memcpy(new_ptr, ptr, prev_size);
+        my_free(ptr);
         return new_ptr;
     }
 }
         
 
 void my_free(void *ptr) {
+#if TRACK_FREE
+            printf("\n**************Call to free begins***************\n\n");
+#endif
     
-    assert(ok_address(g_mstate, ptr));  
+    assert(OK_ADDRESS(g_mstate, ptr));  
 
     chunkptr fchunk = MEM_TO_CHUNK(ptr);
     check_malloced_chunk(ptr, CHUNKSIZE(fchunk));
@@ -438,10 +456,16 @@ void my_free(void *ptr) {
     
     CLEAR_C_USED_AND_NEXT_P_USED(fchunk);
     size_t size = CHUNKSIZE(fchunk);
+#if TRACK_FREE
+        printf("Adding the free chunk of size %ld to corresponding bin\n", size);
+#endif 
     if (size <= MAX_SMALL_SIZE) {
         insert_small_chunk(g_mstate, fchunk, size);
     }
     else {
         insert_large_chunk(g_mstate, (tchunkptr)fchunk, size);
     }
+#if TRACK_FREE
+            printf("\n**************Call to free ends***************\n\n");
+#endif
 }
